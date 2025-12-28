@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>RNG Gacha Game 完全版</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<style>
+body{
+  margin:0;
+  font-family:sans-serif;
+  background:#020617;
+  color:#fff;
+  text-align:center;
+  overflow-x:hidden;
+}
+#bg{
+  position:fixed;
+  inset:0;
+  background-size:cover;
+  background-position:center;
+  z-index:-1;
+}
+button{
+  padding:10px 18px;
+  font-size:14px;
+  margin:5px;
+}
+.hidden{display:none!important}
+
+/* ===== overlay（暗転しない） ===== */
+#overlay{
+  position:fixed;
+  inset:0;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  z-index:50;
+  pointer-events:none;
+}
+#overlay .panel{
+  background:#020617;
+  border:2px solid #64748b;
+  border-radius:12px;
+  padding:20px;
+  max-width:90%;
+  pointer-events:auto;
+}
+
+/* ===== 演出 ===== */
+.rollText{
+  font-size:26px;
+  letter-spacing:3px;
+}
+.legend{
+  animation:flash 0.3s infinite alternate;
+}
+@keyframes flash{
+  from{color:#fde047}
+  to{color:#f97316}
+}
+</style>
+</head>
+<body>
+
+<div id="bg"></div>
+
+<h1>🎲 RNG Gacha</h1>
+
+<p>
+💰 <span id="coin">0</span>
+</p>
+
+<button onclick="roll()">🎰 ガチャ</button>
+<button onclick="showDex()">📖 図鑑</button>
+
+<div id="overlay" class="hidden"></div>
+
+<audio id="bgmLegend" loop>
+  <source src="https://cdn.pixabay.com/audio/2022/03/15/audio_7b0d7a7c5b.mp3">
+</audio>
+
+<script>
+/* ===== 状態 ===== */
+let coin=+localStorage.getItem("coin")||0;
+let dex=JSON.parse(localStorage.getItem("dex")||"{}");
+let bg=localStorage.getItem("bg")||"";
+let bestRarity=localStorage.getItem("bestRarity")||"";
+
+/* ===== DOM ===== */
+const coinEl=document.getElementById("coin");
+const bgDiv=document.getElementById("bg");
+const overlay=document.getElementById("overlay");
+const bgmLegend=document.getElementById("bgmLegend");
+
+coinEl.textContent=coin;
+if(bg) bgDiv.style.backgroundImage=`url(${bg})`;
+
+/* ===== ガチャテーブル ===== */
+const table=[
+ {name:"Stone Aura",rarity:"Common",rate:40,bg:"#334155"},
+ {name:"Wind Aura",rarity:"Common",rate:40,bg:"#1e293b"},
+ {name:"Solar Halo",rarity:"Rare",rate:12,bg:"#7c3aed"},
+ {name:"Void Crown",rarity:"Legend",rate:6,bg:"https://picsum.photos/seed/legend/1200/800"},
+ {name:"Eternal Myth",rarity:"Mythic",rate:2,bg:"https://picsum.photos/seed/mythic/1200/800"}
+];
+
+const rarityRank={
+  Common:1,
+  Rare:2,
+  Legend:3,
+  Mythic:4
+};
+
+/* ===== util ===== */
+function save(){
+  localStorage.setItem("coin",coin);
+  localStorage.setItem("dex",JSON.stringify(dex));
+  localStorage.setItem("bg",bg);
+  localStorage.setItem("bestRarity",bestRarity);
+  coinEl.textContent=coin;
+}
+function show(html){
+  overlay.innerHTML=`<div class="panel">${html}</div>`;
+  overlay.classList.remove("hidden");
+}
+function closeOv(){
+  overlay.classList.add("hidden");
+  overlay.innerHTML="";
+}
+overlay.onclick=e=>{
+  if(e.target===overlay) closeOv();
+};
+
+/* ===== 抽選 ===== */
+function pick(){
+  let r=Math.random()*100,sum=0;
+  for(const g of table){
+    sum+=g.rate;
+    if(r<sum) return g;
+  }
+}
+
+/* ===== ガチャ演出 ===== */
+async function roll(){
+  let names=table.map(t=>t.name);
+  show(`<div class="rollText" id="rt">Rolling...</div>`);
+  for(let i=0;i<25;i++){
+    document.getElementById("rt").textContent=
+      names[Math.floor(Math.random()*names.length)];
+    await new Promise(r=>setTimeout(r,60));
+  }
+  const g=pick();
+  finish(g);
+}
+
+function finish(g){
+  dex[g.name]=(dex[g.name]||0)+1;
+  coin+=10;
+
+  let html=`<h2 class="${g.rarity==="Legend"||g.rarity==="Mythic"?"legend":""}">
+  ${g.name}</h2>
+  <p>✨ ${g.rarity}</p>
+  <button onclick="afterRoll('${g.rarity}','${g.bg}')">OK</button>`;
+  show(html);
+}
+
+function afterRoll(rarity,bgUrl){
+  closeOv();
+
+  if(rarity==="Legend"||rarity==="Mythic"){
+    bgmLegend.currentTime=0;
+    bgmLegend.play();
+  }
+
+  if(!bestRarity || rarityRank[rarity]>rarityRank[bestRarity]){
+    bestRarity=rarity;
+    bg=bgUrl;
+    bgDiv.style.backgroundImage=`url(${bgUrl})`;
+  }else if(rarityRank[rarity]===rarityRank[bestRarity]){
+    show(`背景を変更しますか？<br>
+      <button onclick="changeBg('${bgUrl}')">はい</button>
+      <button onclick="closeOv()">いいえ</button>`);
+  }
+  save();
+}
+
+function changeBg(url){
+  bg=url;
+  bgDiv.style.backgroundImage=`url(${url})`;
+  closeOv();
+  save();
+}
+
+/* ===== 図鑑 ===== */
+function showDex(){
+  let h="<h2>📖 図鑑</h2>";
+  for(const k in dex){
+    h+=`${k} × ${dex[k]}<br>`;
+  }
+  h+=`<br><button onclick="closeOv()">閉じる</button>`;
+  show(h);
+}
+</script>
+</body>
+</html>
